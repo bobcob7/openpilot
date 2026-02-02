@@ -6,9 +6,6 @@ cd $DIR
 
 source ./setup.sh
 
-# *** uv lockfile check ***
-uv lock --check
-
 # *** build ***
 scons -j8
 

@@ -2,7 +2,6 @@ import os
 import math
 import hypothesis.strategies as st
 import pytest
-from functools import cache
 from hypothesis import Phase, given, settings
 from collections.abc import Callable
 from typing import Any
@@ -11,7 +10,7 @@ from opendbc.car import DT_CTRL, CanData, structs
 from opendbc.car.car_helpers import interfaces
 from opendbc.car.fingerprints import FW_VERSIONS
 from opendbc.car.fw_versions import FW_QUERY_CONFIGS
-from opendbc.car.interfaces import CarInterfaceBase, get_interface_attr
+from opendbc.car.interfaces import get_interface_attr
 from opendbc.car.mock.values import CAR as MOCK
 from opendbc.car.values import PLATFORMS
 
@@ -28,8 +27,7 @@ DLC_TO_LEN = [0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64]
 MAX_EXAMPLES = int(os.environ.get('MAX_EXAMPLES', '15'))
 
 
-@cache
-def get_fuzzy_strategy():
+def get_fuzzy_car_interface_args(draw: DrawType) -> dict:
   # Fuzzy CAN fingerprints and FW versions to test more states of the CarInterface
   fingerprint_strategy = st.fixed_dictionaries({0: st.dictionaries(st.integers(min_value=0, max_value=0x800),
                                                                    st.sampled_from(DLC_TO_LEN))})
@@ -46,19 +44,11 @@ def get_fuzzy_strategy():
     'car_fw': car_fw_strategy,
     'alpha_long': st.booleans(),
   })
-  return params_strategy
 
-
-def get_fuzzy_car_interface(car_name: str, draw: DrawType) -> CarInterfaceBase:
-  params: dict = draw(get_fuzzy_strategy())
+  params: dict = draw(params_strategy)
   # reduce search space by duplicating CAN fingerprints across all buses
   params['fingerprints'] |= {key + 1: params['fingerprints'][0] for key in range(6)}
-
-  # initialize car interface
-  CarInterface = interfaces[car_name]
-  car_params = CarInterface.get_params(car_name, params['fingerprints'], params['car_fw'],
-                                       alpha_long=params['alpha_long'], is_release=False, docs=False)
-  return CarInterface(car_params)
+  return params
 
 
 class TestCarInterfaces:
@@ -69,8 +59,15 @@ class TestCarInterfaces:
             phases=(Phase.reuse, Phase.generate, Phase.shrink))
   @given(data=st.data())
   def test_car_interfaces(self, car_name, data):
-    car_interface = get_fuzzy_car_interface(car_name, data.draw)
-    car_params = car_interface.CP.as_reader()
+    CarInterface = interfaces[car_name]
+
+    args = get_fuzzy_car_interface_args(data.draw)
+
+    car_params = CarInterface.get_params(car_name, args['fingerprints'], args['car_fw'],
+                                         alpha_long=args['alpha_long'], is_release=False, docs=False)
+    car_interface = CarInterface(car_params)
+    assert car_params
+    assert car_interface
 
     assert car_params.mass > 1
     assert car_params.wheelbase > 0
@@ -92,7 +89,7 @@ class TestCarInterfaces:
           assert len(tune.pid.kiV) > 0 and len(tune.pid.kiV) == len(tune.pid.kiBP)
 
       elif tune.which() == 'torque':
-        assert not math.isnan(tune.torque.latAccelFactor) and tune.torque.latAccelFactor > 0
+        assert not math.isnan(tune.torque.kf) and tune.torque.kf > 0
         assert not math.isnan(tune.torque.friction) and tune.torque.friction > 0
 
     # Run car interface
@@ -115,7 +112,7 @@ class TestCarInterfaces:
       now_nanos += DT_CTRL * 1e9  # 10ms
 
     # Test radar interface
-    radar_interface = car_interface.RadarInterface(car_params)
+    radar_interface = CarInterface.RadarInterface(car_params)
     assert radar_interface
 
     # Run radar interface once

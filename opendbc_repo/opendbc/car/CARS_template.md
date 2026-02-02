@@ -32,14 +32,7 @@ openpilot is installed, but custom forks may allow their use.
 
 Vehicles in this category are not considered plug-and-play. Software support is included in upstream openpilot, but
 these vehicles might not have a harness in the comma store, or the physical install might be at an unusual or cumbersome
-location, or they might need unusual configuration after install. These vehicles will not work with release builds of
-openpilot, but depending on the situation, development builds or custom forks may allow their use.
-
-### SecOC cars with recoverable keys
-
-For a small subset of SecOC-protected vehicles, tools may be available in the community to recover the SecOC keys. These
-tools, and the recovery process, are not part of openpilot. If supplied with a valid SecOC key, development builds or
-custom forks may work with these vehicles. Release builds of openpilot don't support SecOC.
+location, or they might need unusual configuration after install.
 
 ## Dashcam
 
@@ -54,7 +47,9 @@ Supported Models' section of each make [on our wiki](https://wiki.comma.ai/).
 
 Some notable works-in-progress:
 * Honda
-  * 2022-24 Acura RDX, commaai/opendbc#1967
+  * 2025 Acura MDX (CAN-FD), commaai/opendbc#2129
+  * 2022-25 Acura RDX, commaai/opendbc#1967
+  * 2021-25 Honda Odyssey, commaai/opendbc#2170
   * Camera ACC stability improvements, commaai/opendbc#2192
   * Alpha longitudinal stability improvements, commaai/opendbc#2347 and commaai/opendbc#2165
 

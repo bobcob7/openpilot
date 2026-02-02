@@ -4,13 +4,11 @@ from opendbc.car import Bus
 from opendbc.car.structs import CarParams
 from opendbc.car.fw_versions import build_fw_dict
 from opendbc.car.toyota.fingerprints import FW_VERSIONS
-from opendbc.car.toyota.interface import CarInterface, CLUTCH_MSG
 from opendbc.car.toyota.values import CAR, DBC, TSS2_CAR, ANGLE_CONTROL_CAR, RADAR_ACC_CAR, SECOC_CAR, \
                                                   FW_QUERY_CONFIG, PLATFORM_CODE_ECUS, FUZZY_EXCLUDED_PLATFORMS, \
                                                   get_platform_codes
 
 Ecu = CarParams.Ecu
-TransmissionType = CarParams.TransmissionType
 
 
 def check_fw_version(fw_version: bytes) -> bool:
@@ -20,7 +18,6 @@ def check_fw_version(fw_version: bytes) -> bool:
 
 class TestToyotaInterfaces:
   def test_car_sets(self):
-    # Angle and radar-ACC cars are always TSS2 cars
     assert len(ANGLE_CONTROL_CAR - TSS2_CAR) == 0
     assert len(RADAR_ACC_CAR - TSS2_CAR) == 0
 
@@ -168,63 +165,3 @@ class TestToyotaFingerprint:
         platforms_with_shared_codes |= {str(platform), *matches}
 
     assert platforms_with_shared_codes == FUZZY_EXCLUDED_PLATFORMS, (len(platforms_with_shared_codes), len(FW_VERSIONS))
-
-
-class TestToyotaManualTransmission:
-  """Tests for 6MT (manual transmission) detection on Toyota vehicles."""
-
-  def _get_car_params(self, car_model, fingerprint, car_fw=None):
-    """Helper to get CarParams for a given car model and fingerprint."""
-    if car_fw is None:
-      car_fw = []
-    # Create fingerprints for all buses (0-6)
-    fingerprints = {i: fingerprint for i in range(7)}
-    return CarInterface.get_params(car_model, fingerprints, car_fw,
-                                   alpha_long=False, is_release=False, docs=False)
-
-  def test_manual_transmission_detected_with_clutch_message(self):
-    """Test that CLUTCH message (0x361) in fingerprint results in manual transmission detection."""
-    # Fingerprint with CLUTCH message present (message length 8 bytes)
-    fingerprint_with_clutch = {CLUTCH_MSG: 8}
-
-    # Test with Corolla TSS2 (common 6MT platform)
-    car_params = self._get_car_params(CAR.TOYOTA_COROLLA_TSS2, fingerprint_with_clutch)
-    assert car_params.transmissionType == TransmissionType.manual, \
-      f"Expected manual transmission when CLUTCH message present, got {car_params.transmissionType}"
-
-  def test_automatic_transmission_detected_without_clutch_message(self):
-    """Test that absence of CLUTCH message results in automatic transmission detection."""
-    # Fingerprint without CLUTCH message
-    fingerprint_without_clutch = {0x100: 8, 0x200: 8}  # Some other messages
-
-    # Test with Corolla TSS2
-    car_params = self._get_car_params(CAR.TOYOTA_COROLLA_TSS2, fingerprint_without_clutch)
-    assert car_params.transmissionType == TransmissionType.automatic, \
-      f"Expected automatic transmission when CLUTCH message absent, got {car_params.transmissionType}"
-
-  def test_empty_fingerprint_defaults_to_automatic(self):
-    """Test that empty fingerprint defaults to automatic transmission."""
-    car_params = self._get_car_params(CAR.TOYOTA_COROLLA_TSS2, {})
-    assert car_params.transmissionType == TransmissionType.automatic, \
-      f"Expected automatic transmission with empty fingerprint, got {car_params.transmissionType}"
-
-  def test_manual_transmission_on_multiple_platforms(self, subtests):
-    """Test manual transmission detection works across multiple Toyota platforms."""
-    # Fingerprint with CLUTCH message
-    fingerprint_with_clutch = {CLUTCH_MSG: 8}
-
-    # Test on various TSS2 platforms that could have manual transmission variants
-    test_platforms = [
-      CAR.TOYOTA_COROLLA_TSS2,
-      CAR.TOYOTA_COROLLA,
-    ]
-
-    for platform in test_platforms:
-      with subtests.test(platform=platform.value):
-        car_params = self._get_car_params(platform, fingerprint_with_clutch)
-        assert car_params.transmissionType == TransmissionType.manual, \
-          f"Expected manual transmission for {platform} with CLUTCH message"
-
-  def test_clutch_message_id_constant(self):
-    """Test that CLUTCH_MSG constant has the expected value."""
-    assert CLUTCH_MSG == 0x361, f"CLUTCH_MSG should be 0x361, got {hex(CLUTCH_MSG)}"

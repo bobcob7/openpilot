@@ -92,9 +92,7 @@ def create_buttons(packer, CP, CAN, cnt, btn):
 
 
 def create_acc_cancel(packer, CP, CAN, cruise_info_copy):
-  # CAN FD camera-based SCC requires additional signals to be preserved
-  # verbatim from the previous SCC_CONTROL frame to avoid checksum or
-  # state validation faults. Classic CAN SCC only validates a subset.
+  # TODO: why do we copy different values here?
   if CP.flags & HyundaiFlags.CANFD_CAMERA_SCC.value:
     values = {s: cruise_info_copy[s] for s in [
       "COUNTER",

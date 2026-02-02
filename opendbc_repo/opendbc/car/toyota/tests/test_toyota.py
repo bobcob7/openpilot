@@ -1,14 +1,16 @@
 from hypothesis import given, settings, strategies as st
 
-from opendbc.car import Bus
+from opendbc.car import Bus, structs
 from opendbc.car.structs import CarParams
 from opendbc.car.fw_versions import build_fw_dict
 from opendbc.car.toyota.fingerprints import FW_VERSIONS
+from opendbc.car.toyota.interface import CarInterface, CLUTCH_MSG
 from opendbc.car.toyota.values import CAR, DBC, TSS2_CAR, ANGLE_CONTROL_CAR, RADAR_ACC_CAR, SECOC_CAR, \
                                                   FW_QUERY_CONFIG, PLATFORM_CODE_ECUS, FUZZY_EXCLUDED_PLATFORMS, \
                                                   get_platform_codes
 
 Ecu = CarParams.Ecu
+TransmissionType = CarParams.TransmissionType
 
 
 def check_fw_version(fw_version: bytes) -> bool:
@@ -165,3 +167,71 @@ class TestToyotaFingerprint:
         platforms_with_shared_codes |= {str(platform), *matches}
 
     assert platforms_with_shared_codes == FUZZY_EXCLUDED_PLATFORMS, (len(platforms_with_shared_codes), len(FW_VERSIONS))
+
+
+class TestManualTransmissionDetection:
+  """Tests for 6MT (manual transmission) detection logic.
+
+  Manual transmission detection requires BOTH conditions:
+  1. CLUTCH message (0x361) present in fingerprint - only exists on 6MT vehicles
+  2. No transmission ECU detected - automatics have a transmission ECU
+  """
+
+  def _create_car_fw(self, ecus):
+    """Helper to create car_fw list from ECU types."""
+    return [structs.CarParams.CarFw(ecu=ecu) for ecu in ecus]
+
+  def test_manual_transmission_detected(self):
+    """CLUTCH message present + no transmission ECU = manual transmission."""
+    # Fingerprint with CLUTCH message (0x361)
+    fingerprint = {0: {CLUTCH_MSG: 8}}
+    # Car firmware without transmission ECU
+    car_fw = self._create_car_fw([Ecu.engine, Ecu.eps, Ecu.abs, Ecu.fwdRadar, Ecu.fwdCamera])
+
+    ret = structs.CarParams()
+    ret = CarInterface._get_params(ret, CAR.TOYOTA_COROLLA_TSS2, fingerprint, car_fw, False, False, False)
+
+    assert ret.transmissionType == TransmissionType.manual
+
+  def test_automatic_transmission_with_clutch_msg_and_transmission_ecu(self):
+    """CLUTCH message present + transmission ECU present = automatic transmission.
+
+    This handles edge cases where CLUTCH message might appear on automatic cars.
+    """
+    # Fingerprint with CLUTCH message
+    fingerprint = {0: {CLUTCH_MSG: 8}}
+    # Car firmware WITH transmission ECU
+    car_fw = self._create_car_fw([Ecu.engine, Ecu.eps, Ecu.abs, Ecu.fwdRadar, Ecu.fwdCamera, Ecu.transmission])
+
+    ret = structs.CarParams()
+    ret = CarInterface._get_params(ret, CAR.TOYOTA_COROLLA_TSS2, fingerprint, car_fw, False, False, False)
+
+    assert ret.transmissionType == TransmissionType.automatic
+
+  def test_automatic_transmission_no_clutch_msg(self):
+    """No CLUTCH message = automatic transmission (regardless of ECUs)."""
+    # Fingerprint without CLUTCH message
+    fingerprint = {0: {0x100: 8, 0x200: 8}}
+    # Car firmware without transmission ECU
+    car_fw = self._create_car_fw([Ecu.engine, Ecu.eps, Ecu.abs, Ecu.fwdRadar, Ecu.fwdCamera])
+
+    ret = structs.CarParams()
+    ret = CarInterface._get_params(ret, CAR.TOYOTA_COROLLA_TSS2, fingerprint, car_fw, False, False, False)
+
+    assert ret.transmissionType == TransmissionType.automatic
+
+  def test_automatic_transmission_no_clutch_msg_with_transmission_ecu(self):
+    """No CLUTCH message + transmission ECU = automatic transmission."""
+    # Fingerprint without CLUTCH message
+    fingerprint = {0: {0x100: 8, 0x200: 8}}
+    # Car firmware with transmission ECU
+    car_fw = self._create_car_fw([Ecu.engine, Ecu.eps, Ecu.abs, Ecu.fwdRadar, Ecu.fwdCamera, Ecu.transmission])
+
+    ret = structs.CarParams()
+    ret = CarInterface._get_params(ret, CAR.TOYOTA_COROLLA_TSS2, fingerprint, car_fw, False, False, False)
+
+    assert ret.transmissionType == TransmissionType.automatic
+
+  def test_clutch_message_id(self):
+    """Verify CLUTCH message ID constant is correct."""
+    assert CLUTCH_MSG == 0x361

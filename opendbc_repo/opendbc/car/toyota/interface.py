@@ -111,20 +111,26 @@ class CarInterface(CarInterfaceBase):
     # Detect flipped signals and enable for C-HR and others
     ret.enableBsm = 0x3F6 in fingerprint[0] and candidate in TSS2_CAR
 
-    # Manual transmission detection: CLUTCH message (0x361) is only present on 6MT vehicles
-    # This is a positive detection method - the message existing confirms manual transmission
+    # Manual transmission detection requires BOTH:
+    # 1. CLUTCH message (0x361) present - only exists on 6MT vehicles
+    # 2. No transmission ECU detected - automatics have a transmission ECU
     fingerprint_bus0 = fingerprint.get(0, {})
     clutch_msg_present = CLUTCH_MSG in fingerprint_bus0
+    has_transmission_ecu = Ecu.transmission in found_ecus
 
-    carlog.warning(f"[6MT Detection] Fingerprint bus 0 messages: {sorted(fingerprint_bus0.keys())}")
     carlog.warning(f"[6MT Detection] CLUTCH message (0x361) present: {clutch_msg_present}")
+    carlog.warning(f"[6MT Detection] Transmission ECU present: {has_transmission_ecu}")
+    carlog.warning(f"[6MT Detection] Found ECUs: {found_ecus}")
 
-    if clutch_msg_present:
+    if clutch_msg_present and not has_transmission_ecu:
       ret.transmissionType = TransmissionType.manual
-      carlog.warning("[6MT Detection] Detected MANUAL transmission (CLUTCH message found)")
+      carlog.warning("[6MT Detection] Detected MANUAL transmission (CLUTCH message found, no transmission ECU)")
     else:
       ret.transmissionType = TransmissionType.automatic
-      carlog.warning("[6MT Detection] Detected AUTOMATIC transmission (no CLUTCH message)")
+      if not clutch_msg_present:
+        carlog.warning("[6MT Detection] Detected AUTOMATIC transmission (no CLUTCH message)")
+      elif has_transmission_ecu:
+        carlog.warning("[6MT Detection] Detected AUTOMATIC transmission (transmission ECU present)")
 
     carlog.warning(f"[6MT Detection] Final transmissionType: {ret.transmissionType}")
 

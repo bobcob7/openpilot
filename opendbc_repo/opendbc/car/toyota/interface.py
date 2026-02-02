@@ -1,5 +1,4 @@
 from opendbc.car import Bus, structs, get_safety_config, uds
-from opendbc.car.carlog import carlog
 from opendbc.car.toyota.carstate import CarState
 from opendbc.car.toyota.carcontroller import CarController
 from opendbc.car.toyota.radar_interface import RadarInterface
@@ -111,28 +110,11 @@ class CarInterface(CarInterfaceBase):
     # Detect flipped signals and enable for C-HR and others
     ret.enableBsm = 0x3F6 in fingerprint[0] and candidate in TSS2_CAR
 
-    # Manual transmission detection requires BOTH:
-    # 1. CLUTCH message (0x361) present - only exists on 6MT vehicles
-    # 2. No transmission ECU detected - automatics have a transmission ECU
-    fingerprint_bus0 = fingerprint.get(0, {})
-    clutch_msg_present = CLUTCH_MSG in fingerprint_bus0
-    has_transmission_ecu = Ecu.transmission in found_ecus
-
-    carlog.warning(f"[6MT Detection] CLUTCH message (0x361) present: {clutch_msg_present}")
-    carlog.warning(f"[6MT Detection] Transmission ECU present: {has_transmission_ecu}")
-    carlog.warning(f"[6MT Detection] Found ECUs: {found_ecus}")
-
-    if clutch_msg_present and not has_transmission_ecu:
+    # Manual transmission: CLUTCH message (0x361) present and no transmission ECU
+    if CLUTCH_MSG in fingerprint[0] and Ecu.transmission not in found_ecus:
       ret.transmissionType = TransmissionType.manual
-      carlog.warning("[6MT Detection] Detected MANUAL transmission (CLUTCH message found, no transmission ECU)")
     else:
       ret.transmissionType = TransmissionType.automatic
-      if not clutch_msg_present:
-        carlog.warning("[6MT Detection] Detected AUTOMATIC transmission (no CLUTCH message)")
-      elif has_transmission_ecu:
-        carlog.warning("[6MT Detection] Detected AUTOMATIC transmission (transmission ECU present)")
-
-    carlog.warning(f"[6MT Detection] Final transmissionType: {ret.transmissionType}")
 
     # No radar dbc for cars without DSU which are not TSS 2.0
     # TODO: make an adas dbc file for dsu-less models
